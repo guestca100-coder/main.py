@@ -702,4 +702,4 @@ async def stats(ctx):
 # Fire up the HTTP ping server right before the bot connects
 keep_alive()
 
-bot.run("MTUwNTY3Mzk1NDc3NjU4NDQ3Mw.GwelQ9.n6RirsYxJjv89GWEnfDC4Kid17cr2vXcI_P_bg")
+bot.run("MTUwNTY3Mzk1NDc3NjU4NDQ3Mw.G8c5ic.QK0dZN2qKsZLqcmk9Q-E_UNI-AS3-uL-9t26aE")
