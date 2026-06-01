@@ -1,0 +1,5 @@
+py-cord
+websocket-client
+requests
+cloudscraper
+fake-useragent
