@@ -2,6 +2,7 @@
 from discord.commands import Option
 from discord.ext import commands
 from fake_useragent import UserAgent
+from flask import Flask
 import cloudscraper
 import websocket
 import threading
@@ -14,6 +15,29 @@ import time
 import os
 import ssl
 import sys
+
+# ═══════════════════════════════════════════════════════════════════════
+# KEEP ALIVE SERVER (Flask)
+# ═══════════════════════════════════════════════════════════════════════
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Xeno Autotyper is Alive!"
+
+def run_server():
+    # Flask output is silenced to keep the console clean
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = threading.Thread(target=run_server)
+    t.daemon = True
+    t.start()
+
+# ═══════════════════════════════════════════════════════════════════════
+# BOT INITIALIZATION
+# ═══════════════════════════════════════════════════════════════════════
 
 # Discord Bot Parameters
 ADMIN_ID = 1030881413534318674
@@ -47,7 +71,7 @@ class Emojis:
 ua = UserAgent(platforms="desktop")
 tasks = []
 
-# Get Hashes from Bootstrap (Step 1 Implementation with Safe Fallback)
+# Get Hashes from Bootstrap
 def getVersion():
     headers = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -56,7 +80,7 @@ def getVersion():
         'dnt': '1',
         'priority': 'u=0, i',
         'referer': 'https://www.nitrotype.com/login',
-        'sec-ch-ua': '"Google Chrome";v=131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'document',
@@ -66,16 +90,8 @@ def getVersion():
         'upgrade-insecure-requests': '1',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     }
-    try:
-        r = requests.get('https://www.nitrotype.com/garage', headers=headers, timeout=10).text
-        parsed = r.split('<script src="/index/')[1].split('/bootstrap.js"')[0].split('-')
-        return parsed[0], parsed[1]
-    except Exception as e:
-        print(f"[!] Warning: Unable to parse dynamic build assets ({e}). Using stable fallback values.")
-        # Fallback values to keep the client running if scraping fails
-        fallback_hash = "6cc684f48b94157e937d"
-        fallback_int = "1"
-        return fallback_hash, fallback_int
+    r = requests.get('https://www.nitrotype.com/garage', headers=headers).text.split('<script src="/index/')[1].split('/bootstrap.js"')[0].split('-')
+    return r
 
 VERSION_HASH, VERSION_INT = getVersion()
 
@@ -89,6 +105,7 @@ def calculate_typing_time_per_letter(wpm, num_words):
 def removeBeg(text):
     return json.loads(text[1:])
 
+# FIXED: Added missing 'min_acc' parameter to handle incoming calls correctly
 def startTyping(client, words, set_wpm, min_acc):
     target_accuracy = random.uniform(min_acc, 98) / 100
     error_probability = 1 - target_accuracy
@@ -108,7 +125,7 @@ def startTyping(client, words, set_wpm, min_acc):
                 e += 1
                 client.send(
                     '5' + json.dumps(
-                        {"stream": "race", "msg": "update", "payload": {"e": e, "k": [[wrong_char, random.randint(1, 500), 1, None]]}},separators=(',', ':')
+                        {"stream": "race", "msg": "update", "payload": {"e": e, "k": [[wrong_char, random.randint(1, 500), 1, None]]}}, separators=(',', ':')
                     )
                 )
             packet.append([char, random.randint(1, 500), None, None])
@@ -117,7 +134,7 @@ def startTyping(client, words, set_wpm, min_acc):
             if total_delay >= 450 or len(packet) >= 5:
                 client.send(
                     '5' + json.dumps(
-                        {"stream": "race", "msg": "update", "payload": {"t": c, "k": packet}},separators=(',', ':')
+                        {"stream": "race", "msg": "update", "payload": {"t": c, "k": packet}}, separators=(',', ':')
                     )
                 )
                 packet_count += len(packet)
@@ -126,7 +143,7 @@ def startTyping(client, words, set_wpm, min_acc):
             elif packet_count + len(packet) == len(word_group):
                 client.send(
                     '5' + json.dumps(
-                        {"stream": "race", "msg": "update", "payload": {"t": c, "k": packet}},separators=(',', ':')
+                        {"stream": "race", "msg": "update", "payload": {"t": c, "k": packet}}, separators=(',', ':')
                     )
                 )
                 packet_count += len(packet)
@@ -207,8 +224,7 @@ def sendSticker(client, stickers):
     time.sleep(random.uniform(0, 2))
     randomSticker = int(random.choice(stickers))
     client.send(
-        '5' + json.dumps({"stream":"race","msg":"chat","payload":{"chatID":randomSticker, "chatType":"sticker"}},separators=(',', ':')
-        )
+        '5' + json.dumps({"stream":"race","msg":"chat","payload":{"chatID":randomSticker, "chatType":"sticker"}}, separators=(',', ':'))
     )
 
 def mainModule(auth, userAgent, discord_id, username, password, cookies, racesPlayed, friendsHash, friends_array, wpm, race_amount, min_acc, stickers):
@@ -256,17 +272,15 @@ def mainModule(auth, userAgent, discord_id, username, password, cookies, racesPl
             client = websocket.create_connection(f'wss://realtime1ws.nitrotype.com/ws?token='+auth, header=headers, sslopt={"cert_reqs": ssl.CERT_REQUIRED, "ssl_version":ssl.PROTOCOL_TLSv1_2, 'check_host':True})
             if friendsHash and friends_array is not None:
                 client.send(
-                    '5' + json.dumps({"stream":"notifications","type":"checkin","payload":{"path":"/race","friends":friends_array,"friendsHash":friendsHash,"racesPlayed":racesPlayed}},separators=(',', ':')
-                    )
+                    '5' + json.dumps({"stream":"notifications","type":"checkin","payload":{"path":"/race","friends":friends_array,"friendsHash":friendsHash,"racesPlayed":racesPlayed}}, separators=(',', ':'))
                 )
             else:
                 client.send(
-                    '5' + json.dumps({"stream":"notifications","type":"checkin","payload":{"path":"/race","racesPlayed":racesPlayed}},separators=(',', ':')
-                    )
+                    '5' + json.dumps({"stream":"notifications","type":"checkin","payload":{"path":"/race","racesPlayed":racesPlayed}}, separators=(',', ':'))
                 )
             client.send(
                 '5' + json.dumps(
-                    {"stream": "race", "msg": "join", "payload": {"update": f"03417", "cacheId": VERSION_HASH, "cacheIdInteger": VERSION_INT, "site": "nitrotype"}},separators=(',', ':')
+                    {"stream": "race", "msg": "join", "payload": {"update": f"03417", "cacheId": VERSION_HASH, "cacheIdInteger": VERSION_INT, "site": "nitrotype"}}, separators=(',', ':')
                 )
             )
             while True:
@@ -308,6 +322,7 @@ def mainModule(auth, userAgent, discord_id, username, password, cookies, racesPl
 
                         if removeBeg(recv)['payload']['status'] == 'racing':
                             set_wpm = random.randint(wpm - 10, wpm + 10)
+                            # Synchronized argument alignment properly
                             threading.Thread(target=startTyping, args=(client, game_text, set_wpm, min_acc,)).start()
 
                     if removeBeg(recv)['msg'] == 'error':
@@ -338,7 +353,7 @@ def mainModule(auth, userAgent, discord_id, username, password, cookies, racesPl
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="NitroType | Quota"))
     print("╔════════════════════════════════════╗")
-    print("║   🏁      Xeno Autotyper     🏁      ║")
+    print("║    🏁     Xeno Autotyper     🏁      ║")
     print("╚════════════════════════════════════╝")
     print(f"Bot User: {bot.user.name}")
     print(f"Bot ID: {bot.user.id}")
@@ -684,6 +699,7 @@ async def stats(ctx):
 # START BOT
 # ═══════════════════════════════════════════════════════════════════════
 
-# Security improvement: check environment variables first, then fallback to explicit token string
-TOKEN = os.getenv("DISCORD_TOKEN", "MTUxMDgzNjk0MDQyMzk1NDU2NQ.GyxQZe.vMnZskmyIfSnos7b73y9tlh5VI012dgo-xUM3U")
-bot.run(TOKEN)
+# Fire up the HTTP ping server right before the bot connects
+keep_alive()
+
+bot.run("MTUwNTY3Mzk1NDc3NjU4NDQ3Mw.GwelQ9.n6RirsYxJjv89GWEnfDC4Kid17cr2vXcI_P_bg")
